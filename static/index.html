@@ -47,22 +47,66 @@
         pre code {
             background-color: unset;
         }
+        .topbar {
+            position: sticky !important;
+            top: 0;
+            z-index: 2 !important;
+        }
+        h4 {
+            position: sticky !important;
+            top: 4.5em;
+            z-index: 3;
+        }
+        @media(max-width: 460px) {
+            h4 {
+                top: 5.5em;
+            }
+        }
+        #theme-toggle {
+            top: calc(40px - 23.2px);
+        }
+        .chat-input {
+            position: sticky !important;
+            bottom: 0;
+            margin: 1ex 0;
+        }
+        .pagehead {
+            margin-bottom: 0;
+        }
+        .shade {
+            height: 3ex;
+            width: 100%;
+            background: linear-gradient(to bottom, var(--Color0), transparent);
+        }
+        .topbar {
+            margin-bottom: -2ex;
+        }
+        #chat-log p {
+            padding: 0 1px;
+        }
     </style>
 </head>
 <body>
     <main>
     <div class="main">
+            <ul class="navbar">
+                <li class="curpagelink"><a href=".">TLDrRacket</a></li>
+                <li><a href="https://github.com/IoriOikawa/TLDrRacket">GitHub</a></li>
+                <li><a href="https://pl.barzilay.org/resources">Booklist</a></li>
+                <li><a href="https://paperneko.moe">Developer</a></li>
+            </ul>
         <div class="topbar">
+            <div id="theme-toggle" title="toggle theme"></div>
             <h1 class="pagehead">
                 TLDrRacket
                 <span class="subtitle">
                     Lecture Notes Updated to Tuesday, December 10th
                 </span>
             </h1>
+            <div class="shade"></div>
         </div>
-        <div class="chat-log" id="chat-log">
-            <h4>eLi</h4>
-            <p>Ask me anything, -don't expect anything.</p>
+        <div id="chat-log">
+            <div><h4>eLi</h4><p>Ask me anything, -don't expect anything.</p></div>
         </div>
         <div class="chat-input">
             <input type="text" id="chat-input" placeholder="Type your message..." />
@@ -83,9 +127,7 @@
 
     <script src="https://unpkg.com/showdown/dist/showdown.min.js"></script>
     <script>
-        const chatLog = document.getElementById('chat-log');
-        const chatInput = document.getElementById('chat-input');
-        const sendButton = document.getElementById('send-button');
+        
         const enterListener = (e) => {
             document.querySelector('.bottom-left-image img').classList.add('hovering');
         };
@@ -97,12 +139,38 @@
             area.addEventListener('mouseleave', leaveListener);
         }
 
+        /* theme.js copiled from https://pl.barzilay.org/script.js */
+        const themes = ["::", "::saturate(0.4)", "l::", "l::saturate(0.4)"];
+        let curTheme = "::";
+        const setTheme0 = t => {
+            if (t == curTheme)
+                return;
+            const [[name,filter],[curName,curFilter]] = [t, curTheme].map(t => t.split(/::/));
+            curTheme = t;
+            if (curName != "" && name != curName)
+                document.body.classList.remove(curName);
+            if (name != "")
+                document.body.classList.add(name);
+            if (filter != curFilter)
+                document.body.parentElement.style.filter = filter;
+            if (localStorage.theme != t)
+                t ? localStorage.theme = t : delete localStorage.theme;
+        };
+        const setTheme = (t=(localStorage.theme || "::")) => setTheme0(t !== null ? t : themes[(themes.indexOf(curTheme) + 1) % themes.length]);
+        addEventListener("storage", e => (e.key == "theme") && setTheme());
+        window.addEventListener("load", () => document.getElementById("theme-toggle")?.addEventListener("click", () => setTheme(null)));
+
+        const chatLog = document.getElementById('chat-log');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+
         const converter = new showdown.Converter();
         function addMessageToLog(message, sources, isUser = true) {
             const messageElement = document.createElement('p');
-            messageElement.innerHTML = '<h4>' + (isUser ? 'You' : 'eLi') + '</h4>'
+            messageElement.innerHTML = '<div><h4>' + (isUser ? 'You' : 'eLi') + '</h4>'
                 + converter.makeHtml(message.replace(/\xa0/g, ' '))
-                .replace(/<pre>/g, '<pre class="codeboxcontainer">');
+                .replace(/<pre>/g, '<pre class="codeboxcontainer">')
+                + '</div>';
             chatLog.appendChild(messageElement);
             if (Array.isArray(sources)) {
                 const quoteElement = document.createElement('blockquote');
