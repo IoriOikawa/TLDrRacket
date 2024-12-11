@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Box</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <style>
+        blockquote p::before {
+            font-family: pl-icons;
+            font-weight: normal;
+            content: "P ";
+        }
+        .chat-input {
+            display: flex;
+        }
+        #chat-input {
+            flex: 1;
+        }
+        .bottom-left-image {
+            position: fixed;
+            bottom: 0;
+            margin: 0;
+            padding: 0;
+            height: 330px;
+            width: 300px;
+        }
+        .bottom-left-image img {
+            margin: 0 5px;
+            opacity: 0.5;
+            transition: all 0.2s ease-in-out;
+        }
+        main > div.main div {
+            position: relative;
+            z-index: 1;
+        }
+        .bottom-left-image img.hovering {
+            filter:
+                drop-shadow(-2px -2px 4px var(--linkActiveShadowColor))
+                drop-shadow(-2px +2px 4px var(--linkActiveShadowColor))
+                drop-shadow(+2px -2px 4px var(--linkActiveShadowColor))
+                drop-shadow(+2px +2px 4px var(--linkActiveShadowColor));
+        }
+        code {
+            display: inline-block;
+        }
+        pre code {
+            background-color: unset;
+        }
+    </style>
+</head>
+<body>
+    <main>
+    <div class="main">
+        <div class="topbar">
+            <h1 class="pagehead">
+                TLDrRacket
+                <span class="subtitle">
+                    Lecture Notes Updated to Tuesday, December 10th
+                </span>
+            </h1>
+        </div>
+        <div class="chat-log" id="chat-log">
+            <h4>eLi</h4>
+            <p>Ask me anything, -don't expect anything.</p>
+        </div>
+        <div class="chat-input">
+            <input type="text" id="chat-input" placeholder="Type your message..." />
+            <button id="send-button">Send</button>
+        </div>
+    </div>        
+    </main>
+
+    <div class="bottom-left-image">
+        <map name="girl">
+            <area title="GitHub" shape="rect" coords="50, 200, 180, 290" href="https://github.com/IoriOikawa/TLDrRacket" />
+            <area title="Booklist" shape="rect" coords="200, 150, 300, 280" href="https://pl.barzilay.org/resources" />
+            <area title="Developer" shape="circle" coords="100, 100, 90" href="https://paperneko.moe" />
+        </map>
+        <img src="sicp.png" alt="paperNeko" usemap="#girl" width="300px" height="330px">
+    </div>
+    </a>
+
+    <script src="https://unpkg.com/showdown/dist/showdown.min.js"></script>
+    <script>
+        const chatLog = document.getElementById('chat-log');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+        const enterListener = (e) => {
+            document.querySelector('.bottom-left-image img').classList.add('hovering');
+        };
+        const leaveListener = (e) => {
+            document.querySelector('.bottom-left-image img').classList.remove('hovering');
+        };
+        for (const area of document.querySelectorAll('.bottom-left-image area')) {
+            area.addEventListener('mouseenter', enterListener);
+            area.addEventListener('mouseleave', leaveListener);
+        }
+
+        const converter = new showdown.Converter();
+        function addMessageToLog(message, sources, isUser = true) {
+            const messageElement = document.createElement('p');
+            messageElement.innerHTML = '<h4>' + (isUser ? 'You' : 'eLi') + '</h4>'
+                + converter.makeHtml(message.replace(/\xa0/g, ' '))
+                .replace(/<pre>/g, '<pre class="codeboxcontainer">');
+            chatLog.appendChild(messageElement);
+            if (Array.isArray(sources)) {
+                const quoteElement = document.createElement('blockquote');
+                for (const source of sources) {
+                    const quote = document.createElement('p');
+                    quote.textContent = source.replace(/^data\//, '');
+                    quoteElement.appendChild(quote);
+                }
+                chatLog.appendChild(quoteElement);
+            }
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            addMessageToLog(message);
+            chatInput.value = '';
+
+            try {
+                const response = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message }),
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch response');
+                }
+
+                const data = await response.json();
+                addMessageToLog(data.response, data.sources, false);
+            } catch (error) {
+                addMessageToLog('Error: ' + error.message, false);
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
