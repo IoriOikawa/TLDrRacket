@@ -1,0 +1,10 @@
+[
+  {"question": "What is the difference between lexical and dynamic scope?", "relevant_sources": ["PLNotes9 - Caches and Lexical Scopes.pdf", "PLNotes10 - Closures and Environments.pdf"]},
+  {"question": "How do closures capture their environment?", "relevant_sources": ["PLNotes10 - Closures and Environments.pdf", "PLNotes11 - More Closures, Evaluators, and Feature Embedding.pdf"]},
+  {"question": "Racket 中的惰性求值是什么？", "relevant_sources": ["PLNotes18 - Lazy Evaluation.pdf", "PLNotes19 - Lazy Evaluator Implementation.pdf", "PLNotes7 - Lazy Evaluations, de Brujin, First Class Functions.pdf"]},
+  {"question": "How are continuations used in an interpreter?", "relevant_sources": ["PLNotes28 - Continuations.pdf", "PLNotes29 - More on Continuation.pdf"]},
+  {"question": "What is the weather in Boston tomorrow?", "relevant_sources": []},
+  {"question": "Give me a recipe for chocolate cake.", "relevant_sources": []},
+  {"question": "Who won yesterday's baseball game?", "relevant_sources": []},
+  {"question": "帮我规划一次去东京的旅行。", "relevant_sources": []}
+]

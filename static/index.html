@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Box</title>
+    <title>TLDrRacket — Find your way through the readings</title>
     <link rel="stylesheet" type="text/css" href="style.css">
     <style>
         blockquote p::before {
@@ -100,18 +100,24 @@
             <h1 class="pagehead">
                 TLDrRacket
                 <span class="subtitle">
-                    Lecture Notes Updated to Tuesday, December 10th
+                    A reading companion for CS4400 / CS5400 · Up to five relevant reading locations
                 </span>
             </h1>
             <div class="shade"></div>
         </div>
         <div id="chat-log">
-            <div><h4>eLi</h4><p>Ask me anything, -don't expect anything.</p></div>
+            <div><h4>eLi</h4><p>Ask about Racket or programming languages. I will look through the indexed readings and point you to relevant pages. If I cannot find enough evidence, I will say so.</p></div>
         </div>
-        <div class="chat-input">
-            <input type="text" id="chat-input" placeholder="Type your message..." />
-            <button id="send-button">Send</button>
+        <div id="request-status" class="request-status" role="status" aria-live="polite" hidden>
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Searching the readings and preparing an answer…</span>
+            <span id="request-elapsed" aria-hidden="true">0s</span>
         </div>
+        <form id="chat-form" class="chat-input">
+            <label class="sr-only" for="chat-input">Your question about the readings</label>
+            <input type="text" id="chat-input" placeholder="Ask about a course concept…" maxlength="2000" autocomplete="off" required />
+            <button id="send-button" type="submit">Send</button>
+        </form>
     </div>        
     </main>
 
@@ -123,9 +129,7 @@
         </map>
         <img src="sicp.png" alt="paperNeko" usemap="#girl" width="300px" height="330px">
     </div>
-    </a>
 
-    <script src="https://unpkg.com/showdown/dist/showdown.min.js"></script>
     <script>
         
         const enterListener = (e) => {
@@ -160,63 +164,10 @@
         addEventListener("storage", e => (e.key == "theme") && setTheme());
         window.addEventListener("load", () => document.getElementById("theme-toggle")?.addEventListener("click", () => setTheme(null)));
 
-        const chatLog = document.getElementById('chat-log');
-        const chatInput = document.getElementById('chat-input');
-        const sendButton = document.getElementById('send-button');
-
-        const converter = new showdown.Converter();
-        function addMessageToLog(message, sources, isUser = true) {
-            const messageElement = document.createElement('p');
-            messageElement.innerHTML = '<div><h4>' + (isUser ? 'You' : 'eLi') + '</h4>'
-                + converter.makeHtml(message.replace(/\xa0/g, ' '))
-                .replace(/<pre>/g, '<pre class="codeboxcontainer">')
-                + '</div>';
-            chatLog.appendChild(messageElement);
-            if (Array.isArray(sources)) {
-                const quoteElement = document.createElement('blockquote');
-                for (const source of sources) {
-                    const quote = document.createElement('p');
-                    quote.textContent = source.replace(/^data\//, '');
-                    quoteElement.appendChild(quote);
-                }
-                chatLog.appendChild(quoteElement);
-            }
-            window.scrollTo(0, document.body.scrollHeight);
-        }
-
-        async function sendMessage() {
-            const message = chatInput.value.trim();
-            if (!message) return;
-
-            addMessageToLog(message);
-            chatInput.value = '';
-
-            try {
-                const response = await fetch('/api/ask', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ message }),
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to fetch response');
-                }
-
-                const data = await response.json();
-                addMessageToLog(data.response, data.sources, false);
-            } catch (error) {
-                addMessageToLog('Error: ' + error.message, false);
-            }
-        }
-
-        sendButton.addEventListener('click', sendMessage);
-        chatInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        });
+        setTheme();
     </script>
+    <script src="vendor/showdown-2.1.0.min.js" defer></script>
+    <script src="vendor/purify-3.4.17.min.js" defer></script>
+    <script src="chat.js" defer></script>
 </body>
 </html>

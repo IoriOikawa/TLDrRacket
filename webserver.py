@@ -1,94 +1,106 @@
-import os
-from langchain_chroma import Chroma
+"""Flask HTTP entry point. Importing this module makes no provider requests."""
 
-CHROMA_PATH = "chroma"
+import logging
+from threading import BoundedSemaphore, Lock
 
-if "GOOGLE_API_KEY" not in os.environ:
-    with open("./.env", "r") as mykey:        
-        os.environ["GOOGLE_API_KEY"] = mykey.read().strip()
+import httpx
+from flask import Flask, abort, jsonify, request, send_file
+from werkzeug.exceptions import RequestEntityTooLarge
 
-# from langchain_community.embeddings.ollama import OllamaEmbeddings
-# from langchain_community.embeddings.bedrock import BedrockEmbeddings
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
-# Embedding Function: Used when creating the DB, or making a query.
-def get_embedding_function():
-    # Bedrock Embeddings for AWS Deploy
-    # embeddings = BedrockEmbeddings(
-    #    credentials_profile_name="default", region_name="us-east-1"
-    #)
-    # Ollama Embeddings for Local Run
-    # Install and 'ollama pull llama2|mistral' to deploy.
-    # Use 'ollama serve' for restful API
-    # embeddings = OllamaEmbeddings(model="nomic-embed-text")
-    # 
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-    return embeddings
-
-from langchain.vectorstores.chroma import Chroma
-from langchain.prompts import ChatPromptTemplate
-# from langchain_community.llms.ollama import Ollama
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import StrOutputParser
-from langchain.schema.runnable import RunnablePassthrough
+from rag import ROOT, GenerationFailed, IndexNotReady, Settings, create_service
 
 
-PROMPT_TEMPLATE = """
-Answer the question based only on the following context:
+def create_app(settings=None, service_factory=create_service):
+    settings = settings or Settings.from_env()
+    app = Flask(__name__, static_url_path='', static_folder=str(ROOT / 'static'))
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024
+    service = None
+    service_lock = Lock()
+    slots = BoundedSemaphore(2)
 
-{context}
+    def get_service():
+        nonlocal service
+        with service_lock:
+            if service is None:
+                service = service_factory(settings)
+        return service
 
----
+    @app.after_request
+    def response_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Referrer-Policy'] = 'same-origin'
+        if request.path.startswith('/api/') or request.path in {'/healthz', '/readyz'}:
+            response.headers['Cache-Control'] = 'no-store'
+        return response
 
-Answer the question based on the above context: {question}
-"""
+    @app.errorhandler(RequestEntityTooLarge)
+    def too_large(_error):
+        return jsonify(error='The request body is too large.'), 413
 
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    @app.get('/')
+    def index():
+        return app.send_static_file('index.html')
 
-# Prepare the DB.
-embedding_function = get_embedding_function()
-db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
-retriever = db.as_retriever(search_kwargs={"k" : 5})
-# Generate query with the info augmented prompt.
-# context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-# prompt = prompt_template.format(context=context_text, question=query_text)
-# print(prompt)
+    @app.get('/healthz')
+    def health():
+        return jsonify(status='ok')
 
-# model = Ollama(model="mistral")
-model = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest")
-# response_text = model.invoke(prompt)
-rag_chain = (
-    {"context": retriever | format_docs, "question": RunnablePassthrough()}
-    | prompt_template
-    | model
-    | StrOutputParser()
-)
+    @app.get('/readyz')
+    def ready():
+        try:
+            get_service().ready()
+            return jsonify(status='ready')
+        except IndexNotReady as exc:
+            return jsonify(status='not_ready', error=str(exc)), 503
+        except Exception:
+            app.logger.exception('Index readiness check failed')
+            return jsonify(status='not_ready', error='The reading index could not be opened.'), 503
 
-from flask import Flask, send_from_directory, request, jsonify
+    @app.get('/documents/<path:filename>')
+    def document(filename):
+        path = (settings.data_path / filename).resolve()
+        if (not path.is_relative_to(settings.data_path)
+                or path.suffix.lower() not in {'.pdf', '.txt'} or not path.is_file()):
+            abort(404)
+        return send_file(path, conditional=True)
 
-app = Flask(__name__,
-            static_url_path='', 
-            static_folder='static')
+    @app.post('/api/ask')
+    def ask():
+        data = request.get_json(silent=True)
+        message = data.get('message') if isinstance(data, dict) else None
+        if not isinstance(message, str) or not message.strip():
+            return jsonify(error='Please provide a non-empty message string.'), 400
+        message = message.strip()
+        if len(message) > settings.max_message_length:
+            return jsonify(error=f'Messages must be at most {settings.max_message_length} characters.'), 400
+        if not slots.acquire(blocking=False):
+            return jsonify(error='The assistant is busy. Please try again shortly.'), 429
+        try:
+            current = get_service()
+            current.ready()
+            return jsonify(current.ask(message))
+        except IndexNotReady as exc:
+            return jsonify(error=str(exc)), 503
+        except GenerationFailed as exc:
+            return jsonify(error=str(exc)), 502
+        except Exception as exc:
+            app.logger.exception('Question processing failed')
+            # Integration libraries can wrap transport timeouts in provider errors.
+            cause, visited = exc, set()
+            while cause is not None and id(cause) not in visited:
+                visited.add(id(cause))
+                if isinstance(cause, (TimeoutError, httpx.TimeoutException)):
+                    return jsonify(error='The model request timed out. Please try again.'), 504
+                cause = cause.__cause__ or cause.__context__
+            return jsonify(error='The assistant could not complete this request. Please try again.'), 502
+        finally:
+            slots.release()
 
-@app.route('/')
-def index():
-    return send_from_directory('static', 'index.html')
+    return app
 
-@app.route('/api/ask', methods=['POST'])
-def api_ask():
-    data = request.get_json()
-    if not data or 'message' not in data:
-        return jsonify({"error": "Invalid request"}), 400
 
-    user_message = data['message']
-    response = rag_chain.invoke(user_message)
-    
-    contexts = db.similarity_search_with_score(user_message, k=5)
-    sources = [doc.metadata.get("id", None) for doc, _score in contexts]
-    
-    return jsonify({"response": response, "sources": sources})
+app = create_app()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0')
+    logging.basicConfig(level=logging.INFO)
+    app.run(host='127.0.0.1', port=5000)

@@ -1,0 +1,26 @@
+[Unit]
+Description=TLDrRacket reading companion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tldrracket
+Group=tldrracket
+WorkingDirectory=/opt/tldrracket/current
+EnvironmentFile=/etc/tldrracket.env
+Environment=PYTHONUNBUFFERED=1
+StateDirectory=tldrracket
+ExecStart=/opt/tldrracket/current/.venv/bin/gunicorn --config deploy/gunicorn.conf.py webserver:app
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=130
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tldrracket
+
+[Install]
+WantedBy=multi-user.target
